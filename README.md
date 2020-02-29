@@ -9,7 +9,7 @@
 * 【create_train_json.py】:根据12306获取的所有车次信息基础数据提取所有车次信息和车次代号  
     * In：.data\train_base.json：全国所有车次基础数据文件
     * Out：.data\train.json：从基础数据中提取的全国所有车次数据文件
-* 【get_train.py】:将数据生成可视化的图表并输出flights.html  
+* 【get_train.py】:根据车次信息爬取列车详细信息并保存到数据库中
     * In：.data\train.json：全国所有车次数据文件
     * Out：
         * .data\invalid_train.txt：不能获取到详细信息的车次数据文件
