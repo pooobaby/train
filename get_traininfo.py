@@ -27,7 +27,7 @@ class GetTrainInfo(object):
         self.headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
                                       ' AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.122 Safari/537.36'}
         self.in_filename = r'data\trains.json'
-        self.log_filename = r'data\train_logging.log'
+        self.log_filename = r'data\logging_train.log'
         self.invalid = []
 
         self.this_num = this_num

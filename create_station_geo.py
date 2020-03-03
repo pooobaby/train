@@ -2,11 +2,7 @@
 # -*- coding: utf-8 -*-
 
 # Copyright By Eric in 2020
-"""
-根据12306的火车站原始数据，进行地理编码查询，
-将火车站数据保存到mongoDB中，
-同时将地理编码无效的火车站信息保存到csv文件中
-"""
+
 
 import json
 import requests
@@ -16,75 +12,83 @@ from pymongo import MongoClient
 
 
 # noinspection PyPep8Naming
-class Station(object):
+class CreateStationGeo(object):
     def __init__(self):
         self.client = MongoClient('localhost', port=27017)
         self.db = self.client.train
-        self.collection = self.db.Station
+        self.station = self.db.StationTelecode
+        self.geo = self.db.StationGeo
 
-        self.key = '高德地图API的key'  # 高德地图API的key
-        self.txt_filename = r'data\station_base.txt'        # 存储车站信息原始数据的文件
-        self.csv_filename = r'data\invalid_station.csv'        # 输出的无法查询地理编码车站数据的文件
+        self.key = '47f1c118fa39425ab3f55e4339399e54'  # 高德地图API的key
+        self.file_logging = r'data\logging_geo.log'        # 输出的的日志文件
 
-    def getLocation(self, address):
-        url = 'https://restapi.amap.com/v3/geocode/geo?address=' + address + '站&key=' + self.key
+        self.error = []
+
+    def amapLocation(self, name, string):
+        """
+        -- 根据车站名称调用高德地图API查询省、市和经纬度
+        :param name: str,车站名称
+        :param string: list,['站', '火车站']
+        :return: list:[省, 市, 经度, 纬度]
+        """
+        url = 'https://restapi.amap.com/v3/geocode/geo?address=' + name + string + '&key=' + self.key
         reps = requests.get(url)
         geo_data = json.loads(reps.text)
-        if geo_data['count'] == '0':  # 过滤不能生成地理位置坐标的数据，返回值为0
-            return 0
-        pos = geo_data['geocodes'][0]['location'].split(',')    # 分隔经纬度
-        province = geo_data['geocodes'][0]['province']
-        city = geo_data['geocodes'][0]['city']
-        if len(city) == 0:      # 如果city返回空值，则取下面的district值
-            city = geo_data['geocodes'][0]['district']
-        return [province, city, pos[0], pos[1]]     # 返回省、市（区）、经纬度
 
-    def toDatabase(self):
-        with open(self.txt_filename, 'r', encoding='utf-8') as f:   # 打开原始数据文件
-            data = f.read()
-        lists = data.split('@')[1:]     # 分隔数据
-        invalid = []        # 初始化无效数据列表
-        for n in trange(len(lists)):
-            n_split = lists[n].split('|')       # 再次分隔每条数据
-            location = self.getLocation(n_split[1])     # 调用地理位置生成函数
-            if location == 0:       # 如果不能生成地理坐标，则用'火车站'再次查询
-                location = self.getLocation(n_split[1]+'火车')
-                if location == 0:       # 如果还不能生成地理坐标，将数据加到库中，同时添加到无效列表中
-                    invalid_item = {
-                        'serial': n_split[5],
-                        'telecode': n_split[2],
-                        'name': n_split[1],
-                        'name_abbr': n_split[0],
-                        'name_pinyin': n_split[3],
-                        'province': '',
-                        'city': '',
-                        'lon': '',
-                        'lat': ''
-                    }
-                    self.collection.insert_one(invalid_item)
-                    invalid.append([n_split[5], n_split[2], n_split[1], n_split[0], n_split[3]])
-                    continue
-            item = {
-                'serial': n_split[5],
-                'telecode': n_split[2],
-                'name': n_split[1],
-                'name_abbr': n_split[0],
-                'name_pinyin': n_split[3],
-                'province': location[0],
-                'city': location[1],
-                'lon': location[2],
-                'lat': location[3]
-            }
-            self.collection.insert_one(item)        # 将数据添加到数据库中
-        column = ['serial', 'telecode', 'name', 'name_abbr', 'name_pinyin']     # 定义csv文件的列名
-        invalid_df = pd.DataFrame(columns=column, data=invalid)     # 将无效列表转换成DataFrame格式
-        invalid_df.to_csv(self.csv_filename)        # 将DataFrame数据输出到csv文件
-        print('全部车站信息处理完毕，未查询到地理位置信息的车站共{}个，已保存到{}中：'.format(len(invalid), self.csv_filename))
+        if geo_data['count'] == '0':  # 不能生成地理位置坐标的数据，返回'Error'
+            location_amap = 'Error'
+        else:
+            pos = geo_data['geocodes'][0]['location'].split(',')    # 分隔经纬度
+            province = geo_data['geocodes'][0]['province']
+            city = geo_data['geocodes'][0]['city']
+            if len(city) == 0:      # 如果city返回空值，则取下面的district值
+                city = geo_data['geocodes'][0]['district']
+            location_amap = [province, city, pos[0], pos[1]]     # 返回省、市（区）、经纬度
+        return location_amap
+
+    def writeLog(self, name):
+        """
+        -- 将捕获的错误车站名称加入列表，写入日志文件，返回'Error'
+        :param name: str,车站名称
+        :return: str:'Error'
+        """
+        self.error.append(name)
+        with open(self.file_logging, 'a', encoding='utf-8') as f:
+            f.write('%s,' % name)
+        print('-> %s 获取信息出错，已保存到错误日志中...' % name)
+        return 'Error'
+
+    def saveData(self):
+        """
+        根据车站名称调用高德地图API获得省、市、经纬度信息，保存到数据库中
+        """
+        stations_df = pd.DataFrame(self.station.find({}, {'_id': 0}))
+        string = ['站', '火车站']
+        for n in trange(stations_df.shape[0]):
+            name = stations_df.iat[n, 0]
+            telecode = stations_df.iat[n, 3]
+            pinyin = stations_df.iat[n, 4]
+            bureau = stations_df.iat[n, 1]
+            location = self.amapLocation(name, string[0])
+            if location == 'Error':
+                location_1 = self.amapLocation(name, string[1])
+                if location_1 == 'Error':
+                    self.writeLog(name)
+                else:
+                    item = {'name': name, 'telecode': telecode, 'pinyin': pinyin, 'province': location_1[0],
+                            'city': location_1[1], 'bureau': bureau, 'lon': location_1[2], 'lat': location_1[3]}
+                    self.geo.insert_one(item)
+            else:
+                item = {
+                    'name': name, 'telecode': telecode, 'pinyin': pinyin, 'province': location[0],
+                    'city': location[1], 'bureau': bureau, 'lon': location[2], 'lat': location[3]}
+                self.geo.insert_one(item)
+        return
 
 
 def main():
-    station = Station()
-    station.toDatabase()
+    geo = CreateStationGeo()
+    geo.saveData()
 
 
 if __name__ == '__main__':
