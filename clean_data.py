@@ -3,6 +3,8 @@
 
 # Copyright By Eric in 2020
 
+import pdb
+import json
 import itertools
 from itertools import groupby
 import pandas as pd
@@ -15,7 +17,6 @@ class CleanData(object):
         self.client = MongoClient('localhost', port=27017)
         self.db = self.client.train
         self.old = self.db.Train        # 旧的列车数据集合
-        self.new = self.db.Trains       # 新的列车数据集合
 
         self.old_df = pd.DataFrame(self.old.find({}, {'_id': 0}))
         self.old_df = self.old_df.drop_duplicates(subset='No', keep='first', inplace=False)   # 去除重复数据：8217
@@ -229,7 +230,7 @@ class CleanData(object):
         for n in range(0, 20):
             print('{9:{1}>3}. {2:{1}^12} {3:{0}^7} {4:{0}^8} {5:{0}^8} {6:{1}^6} {7:{1}^8} {8:{1}^6}'
                   .format(chr(12288), ' ', max_top_20.iat[n, 0], max_top_20.iat[n, 1], max_top_20.iat[n, 2],
-                          max_top_20.iat[n, 3], max_top_20.iat[n, 4], max_top_20.iat[n, 5], max_top_20.iat[n, 6],
+                          max_top_20.iat[n, 3], max_top_20.iat[n, 4], max_top_20.iat[n, 5], max_top_20.iat[n, 7],
                           n + 1))
 
         print('\n-- 全国运行时间最短的列车是{}次，运行时间最短的后20次列车信息如下：'.format(min_top_20.iat[-1, 0]))
@@ -239,7 +240,7 @@ class CleanData(object):
             print('{9:{1}>3}. {2:{1}^12} {3:{0}^7} {4:{0}^8} {5:{0}^8} {6:{1}^6} {7:{1}^8} {8:{1}^6}'
                   .format(chr(12288), ' ', min_top_20.iat[-n, 0], min_top_20.iat[-n, 1], min_top_20.iat[-n, 2],
                           min_top_20.iat[-n, 3], min_top_20.iat[-n, 4],
-                          min_top_20.iat[-n, 5], min_top_20.iat[-n, 6], n))
+                          min_top_20.iat[-n, 5], min_top_20.iat[-n, 7], n))
         top_20 = [max_top_20, min_top_20]
         return top_20
 
@@ -247,12 +248,28 @@ class CleanData(object):
         """
         -- 按运行速度对类型进行排序，并格式化输出
         计算过程中运行总时间包含了到站停车时间，因此不是很精确，待以后处理
+        2020-03-03:加入了计算每次列车停车时间的计算，
         :return: list: [(类型名称, 值)]
         """
         s_list = []
         speed = self.changePeriod()     # 调用转换运行时间函数
 
         speed['km'] = speed['km'].apply(pd.to_numeric)  # 将min列转换为整数型
+        speed['stop_time'] = ''
+        for n in range(speed.shape[0]):         # 用遍历提取infos列中的数据，用以计算停车时间
+            info = speed.iat[n, 7]
+            stop_time_n = 0
+            for city in info:
+                if info[city]['st'] == '始发站':
+                    continue
+                elif info[city]['et'] == '终点站':
+                    break
+                else:
+                    time_out = int(info[city]['et'].split(':')[0])*60 + int(info[city]['et'].split(':')[1])
+                    time_in = int(info[city]['st'].split(':')[0])*60 + int(info[city]['st'].split(':')[1])
+                    stop_time_n += time_out - time_in
+            speed.iat[n, 10] = speed.iat[n, 10] - stop_time_n
+
         speed['speed'] = speed[['km', 'time']].apply(lambda x: x['km']/x['time']*60, axis=1)
 
         for n in self.type_dict:
@@ -272,7 +289,7 @@ class CleanData(object):
         -- 基础函数，用来根据period列的值进行分解处理，生成time列
         :return: df:包含time列
         """
-        change = self.old_df[['code', 'type', 'start_s', 'end_s', 'km', 'period', 'key']].copy()
+        change = self.old_df[['code', 'type', 'start_s', 'end_s', 'km', 'period', 'key', 'infos']].copy()
         change['hour'] = change.period.apply(lambda x: x.split(':')[0])  # 分割period列生成hour列
         change['min'] = change.period.apply(lambda x: x.split(':')[1])  # 分割period列生成min列
         change['hour'] = change['hour'].apply(pd.to_numeric)  # 将hour列转换为整数型
