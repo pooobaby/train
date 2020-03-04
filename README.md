@@ -1,13 +1,12 @@
 # Train
 全国铁路旅客列车数据可视化项目
 
-## 基础数据来源：
-
+## 基础数据:
 * 【trains_base.json】:车次基础数据，来源：12306.cn（2019年11月数据）
 * 【station_base.csv】:车站基础数据，来源：12306.cn，获取详细车次信息后增加近500个
 
 ## 项目文件
-
+### 数据处理文件
 * 【get_telecode.py】:根据车站基础数据在moerail.ml获取包含电报码的车站初步信息
     * In：
         * data\station_base.csv，车站基础数据
@@ -17,6 +16,7 @@
 * 【create_station_geo.py】:根据车站初步信息生成地理位置信息    
     * In：
         * mongoDB.train.StationTelecode：存储车站详细信息的集合
+        * 
     * Out：
         * data\logging_geo.log：日志文件，部分车站需要手支输入
         * mongoDB.train.StationGeo：存储车站地理位置信息的集合
@@ -31,12 +31,14 @@
     * Out：
         * data\invalid_train.txt：不能获取到详细信息的车次数据文件
         * data\logging_train.log：日志文件
-        * mongoDB.train.Train：存储车次详细信息的集合
+        * mongoDB.train.Train：存储车次详细信息的集合(对info进行了处理)
 * 【clean_data.py】:根据车次详细信息进行数据处理
     * In:
         * mongoDB.train.Train：存储车次详细信息的集合
     * Out:
-        * 按类型
+        * 按城市统计车次
+        * 按省份统计车次
+        * 按类型统计车次
         * 始发站(TOP 20)
         * 终到站(TOP 20)
         * 所有车站经过列车(TOP 20)
@@ -48,7 +50,16 @@
         * 运行时间最长的列车(TOP 20)
         * 运行时间最短的列车(TOP 20)
         * 各类型运行平均速度
-        
+* 【create_geo_json】:
+    * In:
+        * mongoDB.train.StationGeo：存储车站详细信息的集合
+    * Out:
+        * data\station_geo.json：存储车站地理位置信息的json文件
+### 图表输出文件
+* 【main.py】:主程序
+* 【painter.py】:绘图程序
+* 【train.html】:输出的图表网页文件
+
 ## 项目说明
 
 * 车次基础数据来源：12306.cn（2019年11月数据）
@@ -57,3 +68,5 @@
 * 数据存储：mongoDB
 * 获取车站基础数据3480个，生成有效地理位置数据3480个
 * 获取获取车次基础数据共8314次，最终获取8220次，去重后8217次
+* train.StationTelecode和train.Station是生成train.StationGeo的过渡库
+* 部分统计结果以图表形式输出，详细统计结果可以调用cleaner.py打印输出查看
